@@ -1,0 +1,22 @@
+# 构建产物与本地环境
+build/
+.gradle/
+.kotlin/
+local.properties
+
+# 签名材料（含 keystore 与本机口令），不入库
+signing/*.jks
+signing/*.keystore
+keystore.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# 临时产物
+*.hprof
+/tmp/
+
+# 逆向产物与官方 APK（体积大、不入库）
+.reverse/

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    overflow: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+  #out {
+    padding: 8px;
+    text-align: center;
+    background: transparent;
+  }
+  #out svg {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+  }
+</style>
+<script src="mermaid.min.js"></script>
+</head>
+<body>
+<div id="out"></div>
+<script>
+/*
+ * Mermaid 离线渲染页（对照官方 MermaidDiagram.tsx + services/markdown/mermaid.ts）。
+ * 暴露 window.renderDiagram(code, dark, fontSizePx)，渲染结果塞进 #out，
+ * 高度通过 MermaidBridge.onHeight 回传，失败通过 MermaidBridge.onError 回传。
+ * 本文件自身只用 ES5 写法，避免旧 WebView 解析失败；mermaid 本体需要的语法由它自己负责。
+ */
+(function () {
+  var seq = 0;
+
+  /** 官方 sanitizeMermaid：转义图片标签，避免外部图片请求。 */
+  function sanitize(code) {
+    return String(code == null ? '' : code).replace(/<((?:img|image)\s+)/gi, '&lt;$1');
+  }
+
+  function out() {
+    return document.getElementById('out');
+  }
+
+  /** 清掉 mermaid 可能残留的临时容器，避免撑高页面。 */
+  function cleanup() {
+    var nodes = document.querySelectorAll('body > div[id^="mmd-"]');
+    for (var k = 0; k < nodes.length; k++) {
+      var node = nodes[k];
+      if (node && node.parentNode) node.parentNode.removeChild(node);
+    }
+  }
+
+  function reportHeight() {
+    try {
+      if (window.MermaidBridge && MermaidBridge.onHeight) {
+        MermaidBridge.onHeight((out().scrollHeight | 0) + 8);
+      }
+    } catch (e) { /* 忽略桥接异常 */ }
+  }
+
+  function reportError(message) {
+    try {
+      if (window.MermaidBridge && MermaidBridge.onError) {
+        MermaidBridge.onError(String(message));
+      }
+    } catch (e) { /* 忽略桥接异常 */ }
+  }
+
+  window.renderDiagram = function (code, dark, fontSizePx) {
+    var target = out();
+    var text = code == null ? '' : String(code);
+    if (!text.replace(/\s+/g, '')) {
+      target.innerHTML = '';
+      reportHeight();
+      return;
+    }
+    if (typeof mermaid === 'undefined' || !mermaid || !mermaid.render) {
+      reportError('mermaid 资源未加载完成');
+      return;
+    }
+    var fontSize = (fontSizePx | 0) > 0 ? (fontSizePx | 0) : 14;
+    var id = 'mmd-' + (++seq);
+
+    try {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: dark ? 'dark' : 'default',
+        securityLevel: 'strict',
+        suppressErrorRendering: true,
+        themeVariables: { fontSize: fontSize + 'px' }
+      });
+    } catch (initError) {
+      reportError(initError);
+      return;
+    }
+
+    try {
+      mermaid.render(id, sanitize(text)).then(function (result) {
+        var svg = result && result.svg ? result.svg : '';
+        if (!svg) {
+          cleanup();
+          reportError('空图形');
+          return;
+        }
+        // 成功才替换内容：流式或暂时失败时保留上一张有效图（对照官方行为）
+        target.innerHTML = svg;
+        if (result.bindFunctions) {
+          try { result.bindFunctions(target); } catch (e) { /* 交互绑定失败不影响图形 */ }
+        }
+        cleanup();
+        reportHeight();
+      })['catch'](function (renderError) {
+        cleanup();
+        // 失败不清空 #out，保留上一张有效图；高度沿用上次回传值
+        reportError(renderError && renderError.message ? renderError.message : renderError);
+      });
+    } catch (syncError) {
+      cleanup();
+      reportError(syncError);
+    }
+  };
+
+  // 页面每次加载后重新量一次，用于 WebView 宽度变化后的高度修正
+  window.reMeasure = function () {
+    reportHeight();
+  };
+})();
+</script>
+</body>
+</html>

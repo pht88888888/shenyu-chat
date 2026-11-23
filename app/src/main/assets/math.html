@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="katex/katex.min.css">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    overflow: hidden;
+    -webkit-text-size-adjust: 100%;
+    /* 官方 .ds-markdown-math 继承正文色 */
+    color: #000;
+  }
+  #out {
+    padding: 8px 0;
+    text-align: center;
+    background: transparent;
+    box-sizing: border-box;
+    transform-origin: top center;
+  }
+  #out .katex-display {
+    margin: 0;
+  }
+  #out .katex {
+    /* 与正文 16sp 视觉重量对齐 */
+    font-size: 1.05em;
+  }
+</style>
+<script src="katex/katex.min.js"></script>
+</head>
+<body>
+<div id="out"></div>
+<script>
+/*
+ * KaTeX 离线渲染页（对照官方 services/markdown/math.ts 的 katex.render(tex, {displayMode:true})）。
+ * 暴露 window.renderMath(tex, colorCss, fontSizePx)：
+ * - 渲染成功后按内容实际高度回传 MathBridge.onHeight(cssPx)；
+ * - 内容比视口宽时整体等比缩小（不横向滚动，保证聊天列表竖向手势不被抢走）；
+ * - 失败回传 MathBridge.onError(msg)，Compose 侧回退到自绘近似排版。
+ */
+(function () {
+  function out() { return document.getElementById('out'); }
+
+  function report(h) {
+    try {
+      if (window.MathBridge && MathBridge.onHeight) MathBridge.onHeight(h | 0);
+    } catch (e) { /* 忽略桥接异常 */ }
+  }
+
+  function fail(message) {
+    try {
+      if (window.MathBridge && MathBridge.onError) MathBridge.onError(String(message));
+    } catch (e) { /* 忽略桥接异常 */ }
+  }
+
+  window.renderMath = function (tex, colorCss, fontSizePx) {
+    var target = out();
+    var text = tex == null ? '' : String(tex);
+    if (!text.replace(/\s+/g, '')) {
+      target.innerHTML = '';
+      report(1);
+      return;
+    }
+    if (typeof katex === 'undefined' || !katex || !katex.render) {
+      fail('katex 资源未加载完成');
+      return;
+    }
+    document.body.style.color = colorCss || '#000';
+    target.style.transform = 'none';
+    target.style.width = '100%';
+    target.innerHTML = '';
+    try {
+      katex.render(text, target, {
+        displayMode: true,
+        throwOnError: false,
+        errorColor: '#d93025',
+        strict: false,
+        output: 'html',
+        trust: false
+      });
+    } catch (e) {
+      fail(e && e.message ? e.message : e);
+      return;
+    }
+    // 太宽的公式整体缩放，避免裁切
+    var viewport = out().clientWidth || document.documentElement.clientWidth || 320;
+    var content = target.scrollWidth || 0;
+    if (content > viewport && content > 0) {
+      var ratio = viewport / content;
+      target.style.transform = 'scale(' + ratio.toFixed(4) + ')';
+      target.style.width = (100 / ratio).toFixed(2) + '%';
+    }
+    var height = Math.ceil(target.getBoundingClientRect().height) + 4;
+    report(height);
+  };
+
+  window.reMeasure = function () {
+    var h = Math.ceil(out().getBoundingClientRect().height) + 4;
+    report(h);
+  };
+})();
+</script>
+</body>
+</html>
